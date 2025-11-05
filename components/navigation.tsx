@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
 
 const navigationItems = [
   { name: "首页", href: "/", description: "返回主页" },
@@ -11,9 +12,43 @@ const navigationItems = [
 
 export default function Navigation() {
   const pathname = usePathname();
+  const [isVisible, setIsVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // 如果滚动距离小于50px，始终显示导航栏
+      if (currentScrollY < 50) {
+        setIsVisible(true);
+        setLastScrollY(currentScrollY);
+        return;
+      }
+      
+      // 判断滚动方向
+      if (currentScrollY > lastScrollY) {
+        // 向下滚动 - 隐藏导航栏
+        setIsVisible(false);
+      } else {
+        // 向上滚动 - 显示导航栏
+        setIsVisible(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [lastScrollY]);
 
   return (
-    <nav className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40">
+    <nav className={`bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40 transition-transform duration-300 ${
+      isVisible ? 'translate-y-0' : '-translate-y-full'
+    }`}>
       <div className="max-w-7xl mx-auto px-6 sm:px-8 lg:px-10">
         <div className="flex justify-between h-20">
           {/* Logo和品牌 */}
