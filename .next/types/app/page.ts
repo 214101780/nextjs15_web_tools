@@ -1,4 +1,4 @@
-// File: D:\code\nextjs_web_tools\text_join\app\page.tsx
+// File: D:\code\nextjs_web_tools\nextjs15_web_tools\app\page.tsx
 import * as entry from '../../../app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

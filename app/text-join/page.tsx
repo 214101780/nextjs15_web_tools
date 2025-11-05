@@ -96,122 +96,122 @@ export default function TextJoinTool() {
   const lineCount = inputText.split('\n').filter(line => line.trim() !== '').length;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4">
+    <div className="min-h-screen bg-slate-50 p-6">
       {/* Toast 通知 - 顶部展示 */}
       {toast.show && (
-        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center space-x-2 p-3 rounded-lg shadow-lg transition-all duration-300 ${
+        <div className={`fixed top-6 left-1/2 transform -translate-x-1/2 z-50 flex items-center space-x-3 p-4 rounded-xl shadow-lg transition-all duration-300 ${
           toast.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-rose-50 border border-rose-200 text-rose-800'
         }`}>
           {toast.type === 'success' ? (
-            <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <CheckCircle className="w-5 h-5 text-emerald-600" />
           ) : (
-            <XCircle className="w-4 h-4 text-rose-600" />
+            <XCircle className="w-5 h-5 text-rose-600" />
           )}
-          <span className="font-medium text-sm">{toast.message}</span>
+          <span className="font-medium text-base">{toast.message}</span>
         </div>
       )}
       
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-slate-800 mb-1">文本拼接工具</h1>
-          <p className="text-slate-600 text-sm">将多行文本快速拼接成一行</p>
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-slate-800 mb-3">文本拼接工具</h1>
+          <p className="text-slate-600 text-lg">将多行文本快速拼接成一行</p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 space-y-4">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
           {/* 输入区域 */}
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="input-text" className="text-sm font-semibold">
-                输入多行文本
-              </Label>
-              <div className="relative">
-                <Textarea
-                  id="input-text"
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="请输入多行文本，每行一个项目..."
-                  className="min-h-[100px] resize-y text-sm border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-colors"
-                  rows={4}
-                />
-                <div className="absolute bottom-1 right-1 text-xs text-slate-500 bg-white/90 px-1.5 py-0.5 rounded border border-slate-200">
-                  {characterCount} 字符 / {lineCount} 行
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <Label htmlFor="input-text" className="text-lg font-semibold text-slate-800">
+                  输入多行文本
+                </Label>
+                <div className="relative">
+                  <Textarea
+                    id="input-text"
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    placeholder="请输入多行文本，每行一个项目..."
+                    className="min-h-[150px] resize-y text-base border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors rounded-lg"
+                    rows={6}
+                  />
+                  <div className="absolute bottom-3 right-3 text-sm text-slate-500 bg-white/90 px-3 py-1.5 rounded-lg border border-slate-200">
+                    {characterCount} 字符 / {lineCount} 行
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* 配置区域 - 紧凑布局 */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="delimiter" className="text-xs font-medium text-slate-600">
-                  连接符
-                </Label>
-                <Input
-                  id="delimiter"
-                  value={delimiter}
-                  onChange={(e) => setDelimiter(e.target.value)}
-                  placeholder=","
-                  className="text-sm h-8 border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
-                />
+              {/* 配置区域 */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="delimiter" className="text-base font-medium text-slate-700">
+                    连接符
+                  </Label>
+                  <Input
+                    id="delimiter"
+                    value={delimiter}
+                    onChange={(e) => setDelimiter(e.target.value)}
+                    placeholder=","
+                    className="text-base h-12 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="prefix" className="text-base font-medium text-slate-700">
+                    前缀
+                  </Label>
+                  <Input
+                    id="prefix"
+                    value={prefix}
+                    onChange={(e) => setPrefix(e.target.value)}
+                    placeholder='"'
+                    className="text-base h-12 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="suffix" className="text-base font-medium text-slate-700">
+                    后缀
+                  </Label>
+                  <Input
+                    id="suffix"
+                    value={suffix}
+                    onChange={(e) => setSuffix(e.target.value)}
+                    placeholder='"'
+                    className="text-base h-12 border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="prefix" className="text-xs font-medium text-slate-600">
-                  前缀
-                </Label>
-                <Input
-                  id="prefix"
-                  value={prefix}
-                  onChange={(e) => setPrefix(e.target.value)}
-                  placeholder='"'
-                  className="text-sm h-8 border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="suffix" className="text-xs font-medium text-slate-600">
-                  后缀
-                </Label>
-                <Input
-                  id="suffix"
-                  value={suffix}
-                  onChange={(e) => setSuffix(e.target.value)}
-                  placeholder='"'
-                  className="text-sm h-8 border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
-                />
-              </div>
-            </div>
 
-            {/* 预设按钮和操作按钮 */}
-            <div className="flex justify-between items-center">
-              <div className="flex space-x-2">
-                <Button
-                  onClick={handlePreset1}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7 px-2"
+              {/* 预设按钮和操作按钮 */}
+              <div className="flex justify-between items-center">
+                <div className="flex space-x-3">
+                  <Button
+                    onClick={handlePreset1}
+                    variant="outline"
+                    size="lg"
+                    className="text-base h-12 px-4 border-slate-300"
+                  >
+                    ,
+                  </Button>
+                  <Button
+                    onClick={handlePreset2}
+                    variant="outline"
+                    size="lg"
+                    className="text-base h-12 px-4 border-slate-300"
+                  >
+                    ","
+                  </Button>
+                </div>
+                <Button 
+                  onClick={handleJoinText}
+                  className="px-6 py-3 text-base font-medium bg-blue-600 hover:bg-blue-700 text-white h-12"
+                  size="lg"
                 >
-                  ,
-                </Button>
-                <Button
-                  onClick={handlePreset2}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7 px-2"
-                >
-                  ","
+                  拼接
                 </Button>
               </div>
-              <Button 
-                onClick={handleJoinText}
-                className="px-4 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white"
-                size="sm"
-              >
-                拼接
-              </Button>
             </div>
-          </div>
 
           {/* 结果区域 */}
-          <div className="space-y-1">
-            <Label htmlFor="result" className="text-sm font-semibold text-slate-700">
+          <div className="space-y-3">
+            <Label htmlFor="result" className="text-lg font-semibold text-slate-800">
               拼接结果
             </Label>
             <div className="relative">
@@ -220,11 +220,11 @@ export default function TextJoinTool() {
                 value={result}
                 readOnly
                 placeholder="拼接结果将显示在这里..."
-                className="min-h-[80px] resize-y text-sm bg-slate-50 border-slate-300"
-                rows={3}
+                className="min-h-[120px] resize-y text-base bg-slate-50 border-slate-300 rounded-lg"
+                rows={5}
               />
               {result && (
-                <div className="absolute bottom-1 right-1 text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                <div className="absolute bottom-3 right-3 text-sm text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
                   {result.length} 字符
                 </div>
               )}
@@ -232,23 +232,23 @@ export default function TextJoinTool() {
           </div>
 
           {/* 底部按钮组 */}
-          <div className="flex justify-end space-x-2">
+          <div className="flex justify-end space-x-4">
             <Button
               onClick={handleCopyResult}
               disabled={!result}
-              className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white"
-              size="sm"
+              className="px-6 py-3 text-base font-medium bg-blue-600 hover:bg-blue-700 text-white h-12"
+              size="lg"
             >
-              <Copy className="w-3 h-3 mr-1" />
+              <Copy className="w-5 h-5 mr-2" />
               复制
             </Button>
             <Button
               onClick={handleClearAll}
               variant="outline"
-              className="px-3 py-1.5 text-sm font-medium border-slate-300 hover:border-slate-400 text-slate-700"
-              size="sm"
+              className="px-6 py-3 text-base font-medium border-slate-300 hover:border-slate-400 text-slate-700 h-12"
+              size="lg"
             >
-              <Trash2 className="w-3 h-3 mr-1" />
+              <Trash2 className="w-5 h-5 mr-2" />
               清空
             </Button>
           </div>
