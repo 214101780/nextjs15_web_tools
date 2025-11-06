@@ -8,6 +8,7 @@ import { useState, useEffect } from "react";
 const navigationItems = [
   { name: "首页", href: "/", description: "返回主页" },
   { name: "文本拼接", href: "/text-join", description: "多行文本拼接工具" },
+  { name: "M3U8播放器", href: "/m3u8-player", description: "M3U8视频流播放和分析工具" },
 ];
 
 export default function Navigation() {
