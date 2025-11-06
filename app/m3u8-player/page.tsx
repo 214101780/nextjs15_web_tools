@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,17 @@ export default function M3U8Player() {
     resolution: string | null;
     codecs: string | null;
     m3u8Content: string;
+    // 新增分析字段
+    maxBandwidth: string | null;
+    minBandwidth: string | null;
+    bandwidthCount: number;
+    resolutions: string[];
+    codecsList: string[];
+    version: number | null;
+    isVOD: boolean;
+    isLive: boolean;
+    audioTracks: string[];
+    subtitleTracks: string[];
   } | null>(null);
   const [browserSupport, setBrowserSupport] = useState<{
     h264: boolean;
@@ -34,6 +45,8 @@ export default function M3U8Player() {
     vp9: boolean;
     av1: boolean;
   } | null>(null);
+  const [domain, setDomain] = useState<string>('');
+  const [autoIframeCode, setAutoIframeCode] = useState<string>('');
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackInfo, setPlaybackInfo] = useState({
@@ -245,19 +258,37 @@ export default function M3U8Player() {
 
   // 检测浏览器视频格式支持
   useEffect(() => {
-    const checkBrowserVideoSupport = () => {
+    // 检测浏览器支持的视频编码格式
+    const detectBrowserSupport = () => {
       const video = document.createElement('video');
       const support = {
         h264: video.canPlayType('video/mp4; codecs="avc1.42E01E"') !== '',
         h265: video.canPlayType('video/mp4; codecs="hev1.1.6.L93.B0"') !== '',
         vp9: video.canPlayType('video/webm; codecs="vp9"') !== '',
-        av1: video.canPlayType('video/mp4; codecs="av01.0.05M.08"') !== ''
+        av1: video.canPlayType('video/webm; codecs="av01.0.05M.08"') !== '',
       };
       setBrowserSupport(support);
     };
-    
-    checkBrowserVideoSupport();
+
+    detectBrowserSupport();
   }, []);
+// 设置域名
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setDomain(window.location.origin);
+    }
+  }, []);
+
+  // 自动生成iframe代码
+  useEffect(() => {
+    if (m3u8Url.trim()) {
+      const encodedUrl = encodeURIComponent(m3u8Url);
+      const iframeCode = `<iframe src="${domain || 'https://您的域名'}/s/${encodedUrl}" allowfullscreen></iframe>`;
+      setAutoIframeCode(iframeCode);
+    } else {
+      setAutoIframeCode('');
+    }
+  }, [m3u8Url, domain]);
 
   // 视频事件监听
   useEffect(() => {
@@ -328,19 +359,50 @@ export default function M3U8Player() {
       const totalDuration = durations.reduce((sum, dur) => sum + dur, 0);
       const avgDuration = durations.length > 0 ? totalDuration / durations.length : 0;
       
-      // 分析码率信息
-      const bandwidthMatch = text.match(/#EXT-X-STREAM-INF:.*BANDWIDTH=(\d+)/);
-      const bandwidth = bandwidthMatch ? parseInt(bandwidthMatch[1]) : null;
+      // 分析码率信息 - 增强分析
+      const bandwidthMatches = text.matchAll(/#EXT-X-STREAM-INF:.*BANDWIDTH=(\d+)/g);
+      const bandwidths: number[] = [];
+      for (const match of bandwidthMatches) {
+        bandwidths.push(parseInt(match[1]));
+      }
+      const maxBandwidth = bandwidths.length > 0 ? Math.max(...bandwidths) : null;
+      const minBandwidth = bandwidths.length > 0 ? Math.min(...bandwidths) : null;
       
-      // 分析分辨率
-      const resolutionMatch = text.match(/#EXT-X-STREAM-INF:.*RESOLUTION=(\d+x\d+)/);
-      const resolution = resolutionMatch ? resolutionMatch[1] : null;
+      // 分析分辨率 - 增强分析
+      const resolutionMatches = text.matchAll(/#EXT-X-STREAM-INF:.*RESOLUTION=(\d+x\d+)/g);
+      const resolutions: string[] = [];
+      for (const match of resolutionMatches) {
+        resolutions.push(match[1]);
+      }
       
-      // 分析编码信息
-      const codecsMatch = text.match(/#EXT-X-STREAM-INF:.*CODECS="([^"]+)"/);
-      const codecs = codecsMatch ? codecsMatch[1] : null;
+      // 分析编码信息 - 增强分析
+      const codecsMatches = text.matchAll(/#EXT-X-STREAM-INF:.*CODECS="([^"]+)"/g);
+      const codecsList: string[] = [];
+      for (const match of codecsMatches) {
+        codecsList.push(match[1]);
+      }
       
-
+      // 分析视频类型（VOD或直播）
+      const isVOD = text.includes('#EXT-X-ENDLIST');
+      const isLive = text.includes('#EXT-X-PLAYLIST-TYPE:EVENT') || (!isVOD && text.includes('#EXT-X-MEDIA-SEQUENCE'));
+      
+      // 分析音频信息
+      const audioMatches = text.matchAll(/#EXT-X-MEDIA:TYPE=AUDIO.*NAME="([^"]+)"/g);
+      const audioTracks: string[] = [];
+      for (const match of audioMatches) {
+        audioTracks.push(match[1]);
+      }
+      
+      // 分析字幕信息
+      const subtitleMatches = text.matchAll(/#EXT-X-MEDIA:TYPE=SUBTITLES.*NAME="([^"]+)"/g);
+      const subtitleTracks: string[] = [];
+      for (const match of subtitleMatches) {
+        subtitleTracks.push(match[1]);
+      }
+      
+      // 分析版本信息
+      const versionMatch = text.match(/#EXT-X-VERSION:(\d+)/);
+      const version = versionMatch ? parseInt(versionMatch[1]) : null;
       
       setAnalysisResult({
         segmentCount,
@@ -352,10 +414,21 @@ export default function M3U8Player() {
         lines: lines.length,
         totalDuration: Math.round(totalDuration),
         avgDuration: Math.round(avgDuration * 10) / 10,
-        bandwidth: bandwidth ? `${Math.round(bandwidth / 1000)} kbps` : null,
-        resolution,
-        codecs,
-        m3u8Content: text.substring(0, 1000) + (text.length > 1000 ? '...' : '')
+        bandwidth: maxBandwidth ? `${Math.round(maxBandwidth / 1000)} kbps` : null,
+        resolution: resolutions.length > 0 ? resolutions[0] : null,
+        codecs: codecsList.length > 0 ? codecsList[0] : null,
+        m3u8Content: text, // 显示全部内容
+        // 新增分析字段
+        maxBandwidth: maxBandwidth ? `${Math.round(maxBandwidth / 1000000)} Mbps` : null,
+        minBandwidth: minBandwidth ? `${Math.round(minBandwidth / 1000)} kbps` : null,
+        bandwidthCount: bandwidths.length,
+        resolutions: resolutions,
+        codecsList: codecsList,
+        version: version,
+        isVOD: isVOD,
+        isLive: isLive,
+        audioTracks: audioTracks,
+        subtitleTracks: subtitleTracks
       });
     } catch (err) {
       throw new Error("M3U8文件解析失败");
@@ -668,7 +741,7 @@ export default function M3U8Player() {
                     </div>
                     
                     {/* 媒体信息 */}
-                    {(analysisResult.targetDuration || analysisResult.bandwidth || analysisResult.resolution) && (
+                    {(analysisResult.targetDuration || analysisResult.bandwidth || analysisResult.resolution || analysisResult.version || analysisResult.bandwidthCount > 0) && (
                       <div className="bg-purple-50 p-4 rounded-lg">
                         <h4 className="font-semibold text-purple-800 mb-2">媒体信息</h4>
                         <div className="space-y-2">
@@ -680,23 +753,52 @@ export default function M3U8Player() {
                               </Badge>
                             </div>
                           )}
-                          {analysisResult.bandwidth && (
+                          
+                          {/* 码率信息 */}
+                          {analysisResult.maxBandwidth && (
                             <div className="flex items-center justify-between">
-                              <span className="text-sm">码率</span>
+                              <span className="text-sm">最高码率</span>
                               <Badge variant="default" className="bg-purple-100 text-purple-800">
-                                {analysisResult.bandwidth}
+                                {analysisResult.maxBandwidth}
+                              </Badge>
+                            </div>
+                          )}
+                          {analysisResult.minBandwidth && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">最低码率</span>
+                              <Badge variant="default" className="bg-purple-100 text-purple-800">
+                                {analysisResult.minBandwidth}
+                              </Badge>
+                            </div>
+                          )}
+                          {analysisResult.bandwidthCount > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">码率档位</span>
+                              <Badge variant="default" className="bg-purple-100 text-purple-800">
+                                {analysisResult.bandwidthCount} 个
+                              </Badge>
+                            </div>
+                          )}
+                          
+                          {/* 分辨率信息 */}
+                          {analysisResult.resolutions.length > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">分辨率档位</span>
+                              <Badge variant="default" className="bg-purple-100 text-purple-800">
+                                {analysisResult.resolutions.length} 个
                               </Badge>
                             </div>
                           )}
                           {analysisResult.resolution && (
                             <div className="flex items-center justify-between">
-                              <span className="text-sm">分辨率</span>
+                              <span className="text-sm">默认分辨率</span>
                               <Badge variant="default" className="bg-purple-100 text-purple-800">
                                 {analysisResult.resolution}
                               </Badge>
                             </div>
                           )}
 
+                          {/* 编码信息 */}
                           {analysisResult.codecs && (
                             <div className="flex items-center justify-between">
                               <span className="text-sm">编码格式</span>
@@ -707,6 +809,35 @@ export default function M3U8Player() {
                               </Badge>
                             </div>
                           )}
+                          {analysisResult.codecsList.length > 1 && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">编码档位</span>
+                              <Badge variant="default" className="bg-purple-100 text-purple-800">
+                                {analysisResult.codecsList.length} 个
+                              </Badge>
+                            </div>
+                          )}
+                          
+                          {/* 版本信息 */}
+                          {analysisResult.version && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">HLS版本</span>
+                              <Badge variant="default" className="bg-purple-100 text-purple-800">
+                                v{analysisResult.version}
+                              </Badge>
+                            </div>
+                          )}
+                          
+                          {/* 视频类型 */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">视频类型</span>
+                            <Badge variant="default" className={
+                              analysisResult.isVOD ? 'bg-green-100 text-green-800' : 
+                              analysisResult.isLive ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'
+                            }>
+                              {analysisResult.isVOD ? '点播视频' : analysisResult.isLive ? '直播流' : '未知类型'}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -744,15 +875,50 @@ export default function M3U8Player() {
                       </div>
                     )}
 
+                    {/* 音轨和字幕信息 */}
+                    {(analysisResult.audioTracks.length > 0 || analysisResult.subtitleTracks.length > 0) && (
+                      <div className="bg-indigo-50 p-4 rounded-lg">
+                        <h4 className="font-semibold text-indigo-800 mb-2">音轨和字幕</h4>
+                        <div className="space-y-2">
+                          {analysisResult.audioTracks.length > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">音频轨道</span>
+                              <Badge variant="default" className="bg-indigo-100 text-indigo-800">
+                                {analysisResult.audioTracks.length} 个
+                              </Badge>
+                            </div>
+                          )}
+                          {analysisResult.subtitleTracks.length > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">字幕轨道</span>
+                              <Badge variant="default" className="bg-indigo-100 text-indigo-800">
+                                {analysisResult.subtitleTracks.length} 个
+                              </Badge>
+                            </div>
+                          )}
+                          {analysisResult.audioTracks.length > 0 && (
+                            <div className="text-xs text-indigo-600">
+                              音频轨道: {analysisResult.audioTracks.join(', ')}
+                            </div>
+                          )}
+                          {analysisResult.subtitleTracks.length > 0 && (
+                            <div className="text-xs text-indigo-600">
+                              字幕轨道: {analysisResult.subtitleTracks.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* M3U8内容预览 */}
                     <div className="border-t pt-4">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm text-slate-600 font-medium">M3U8内容预览</p>
                         <Badge variant="outline" className="text-xs">
-                          前{Math.min(analysisResult.m3u8Content.length, 1000)}字符
+                          完整内容 ({analysisResult.m3u8Content.length} 字符)
                         </Badge>
                       </div>
-                      <pre className="text-xs bg-slate-100 p-3 rounded-lg max-h-32 overflow-auto border">
+                      <pre className="text-xs bg-slate-100 p-3 rounded-lg max-h-64 overflow-auto border">
                         {analysisResult.m3u8Content}
                       </pre>
                     </div>
@@ -794,6 +960,121 @@ export default function M3U8Player() {
                   工具会解析M3U8文件结构，显示分片数量、文件大小、目标时长等信息，
                   帮助您了解视频流的质量和结构。
                 </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 嵌入功能说明 */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>嵌入功能</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* 自动生成iframe代码 */}
+              <div>
+                <h3 className="font-semibold mb-2">自动生成嵌入代码</h3>
+                <p className="text-sm text-slate-600 mb-3">
+                  输入M3U8链接后，系统会自动为您生成对应的iframe嵌入代码：
+                </p>
+                {autoIframeCode ? (
+                  <div className="bg-green-50 border border-green-200 p-3 rounded-lg relative">
+                    <code className="text-xs block whitespace-pre-wrap text-green-800">
+                      {autoIframeCode}
+                    </code>
+                    <button 
+                      onClick={(event) => {
+                        navigator.clipboard.writeText(autoIframeCode);
+                        // 显示复制成功提示
+                        const button = event.currentTarget as HTMLButtonElement;
+                        const originalText = button.textContent;
+                        button.textContent = '已复制!';
+                        setTimeout(() => {
+                          button.textContent = originalText;
+                        }, 2000);
+                      }}
+                      className="absolute top-2 right-2 bg-green-600 text-white px-2 py-1 rounded text-xs hover:bg-green-700 transition-colors"
+                    >
+                      复制代码
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-slate-100 p-3 rounded-lg text-center">
+                    <p className="text-sm text-slate-500">
+                      请在输入框中输入M3U8链接，系统将自动生成嵌入代码
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              <div>
+                <h3 className="font-semibold mb-2">iframe嵌入模板</h3>
+                <p className="text-sm text-slate-600 mb-3">
+                  您也可以手动使用以下模板代码：
+                </p>
+                <div className="bg-slate-100 p-3 rounded-lg relative">
+                  <code className="text-xs block whitespace-pre-wrap">
+                    {`<iframe src="${domain || 'https://您的域名'}/s/`}
+                    <span className="text-blue-600">[M3U8链接]</span>
+                    {`" allowfullscreen></iframe>`}
+                  </code>
+                  <button 
+                    onClick={(event) => {
+                      const iframeCode = `<iframe src="${domain || 'https://您的域名'}/s/[M3U8链接]" allowfullscreen></iframe>`;
+                      navigator.clipboard.writeText(iframeCode);
+                      // 显示复制成功提示
+                      const button = event.currentTarget as HTMLButtonElement;
+                      const originalText = button.textContent;
+                      button.textContent = '已复制!';
+                      setTimeout(() => {
+                        button.textContent = originalText;
+                      }, 2000);
+                    }}
+                    className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition-colors"
+                  >
+                    复制模板
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  注意：请将 [M3U8链接] 替换为实际的M3U8文件URL，并确保URL经过URL编码。
+                </p>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">示例</h3>
+                <p className="text-sm text-slate-600">
+                  例如，要嵌入一个M3U8文件，可以使用：
+                </p>
+                <div className="bg-slate-100 p-3 rounded-lg mt-2 relative">
+                  <code className="text-xs block whitespace-pre-wrap">
+                    {`<iframe src="${domain || 'https://您的域名'}/s/https%3A%2F%2Fexample.com%2Fvideo.m3u8" allowfullscreen></iframe>`}
+                  </code>
+                  <button 
+                    onClick={(event) => {
+                      const iframeCode = `<iframe src="${domain || 'https://您的域名'}/s/https%3A%2F%2Fexample.com%2Fvideo.m3u8" allowfullscreen></iframe>`;
+                      navigator.clipboard.writeText(iframeCode);
+                      // 显示复制成功提示
+                      const button = event.currentTarget as HTMLButtonElement;
+                      const originalText = button.textContent;
+                      button.textContent = '已复制!';
+                      setTimeout(() => {
+                        button.textContent = originalText;
+                      }, 2000);
+                    }}
+                    className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-700 transition-colors"
+                  >
+                    复制示例
+                  </button>
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold mb-2">功能特点</h3>
+                <ul className="text-sm text-slate-600 space-y-1">
+                  <li>• 自适应播放器尺寸</li>
+                  <li>• 支持全屏播放</li>
+                  <li>• 自动处理跨域问题</li>
+                  <li>• 响应式设计，适配移动设备</li>
+                </ul>
               </div>
             </div>
           </CardContent>
