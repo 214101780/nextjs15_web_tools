@@ -7,13 +7,34 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info, Play, Square, Download, RefreshCw, AlertTriangle } from "lucide-react";
+import Hls from "hls.js";
 
 export default function M3U8Player() {
   const [m3u8Url, setM3u8Url] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
-  const [corsStatus, setCorsStatus] = useState<"unknown" | "checking" | "allowed" | "blocked">("unknown");
+  const [analysisResult, setAnalysisResult] = useState<{
+    segmentCount: number;
+    hasExtM3U: boolean;
+    hasExtInf: boolean;
+    hasEndList: boolean;
+    targetDuration: number | null;
+    fileSize: number;
+    lines: number;
+    totalDuration: number;
+    avgDuration: number;
+    bandwidth: string | null;
+    resolution: string | null;
+    codecs: string | null;
+    m3u8Content: string;
+  } | null>(null);
+  const [browserSupport, setBrowserSupport] = useState<{
+    h264: boolean;
+    h265: boolean;
+    vp9: boolean;
+    av1: boolean;
+  } | null>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackInfo, setPlaybackInfo] = useState({
     duration: 0,
@@ -21,16 +42,24 @@ export default function M3U8Player() {
     buffered: 0
   });
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
-  // 示例M3U8链接
+  // 添加缺失的corsStatus状态变量
+  const [corsStatus, setCorsStatus] = useState<string>("unknown");
+
+  // 示例M3U8链接 - 更新为可以直接播放的链接
   const exampleUrls = [
     {
       name: "示例1（公开测试）",
-      url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+      url: "https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_hd_7.m3u8"
     },
     {
       name: "示例2（公开测试）", 
-      url: "https://multiplatform-f.akamaihd.net/i/multi/will/bunny/big_buck_bunny_,640x360_400,640x360_700,640x360_1000,950x540_1500,.f4v.csmil/master.m3u8"
+      url: "https://test-streams.mux.dev/x36xhzz/url_4/193039199_mp4_h264_aac_7.m3u8"
+    },
+    {
+      name: "示例3（短视频）",
+      url: "https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8"
     }
   ];
 
@@ -43,34 +72,155 @@ export default function M3U8Player() {
     setIsLoading(true);
     setError("");
     setAnalysisResult(null);
-    setCorsStatus("checking");
     setIsPlaying(false);
 
+    // 清理之前的HLS实例
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
     try {
-      // 检查CORS
-      await checkCors(m3u8Url);
-      
-      // 分析M3U8文件
-      await analyzeM3U8(m3u8Url);
-      
-      // 设置视频源
       if (videoRef.current) {
-        videoRef.current.src = m3u8Url;
-        videoRef.current.load();
+        // 清除之前的错误状态
+        videoRef.current.onerror = null;
         
-        // 等待视频加载后自动播放
-        videoRef.current.onloadeddata = () => {
-          videoRef.current?.play().then(() => {
-            setIsPlaying(true);
-          }).catch(err => {
-            console.warn("自动播放失败:", err);
+        // 检查浏览器是否原生支持HLS
+        if (videoRef.current.canPlayType('application/vnd.apple.mpegurl')) {
+          // 原生支持HLS（Safari等）
+          videoRef.current.src = m3u8Url;
+          videoRef.current.load();
+        } else if (Hls.isSupported()) {
+          // 使用HLS.js库
+          const hls = new Hls({
+            enableWorker: false, // 禁用worker以避免跨域问题
+            debug: false,
+            xhrSetup: function(xhr) {
+              xhr.withCredentials = false; // 禁用凭据
+            }
           });
+          
+          hlsRef.current = hls;
+          
+          // 绑定HLS到video元素
+          hls.attachMedia(videoRef.current);
+          
+          // 监听HLS事件
+          hls.on(Hls.Events.MEDIA_ATTACHED, () => {
+            console.log("HLS媒体已绑定");
+            hls.loadSource(m3u8Url);
+          });
+          
+          hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+            console.log("清单解析完成", data);
+            setError(null);
+            setIsLoading(false); // 添加这行：清单解析完成时停止加载状态
+            videoRef.current?.play().then(() => {
+              setIsPlaying(true);
+            }).catch(err => {
+              console.warn("自动播放失败:", err);
+              setIsPlaying(false);
+              setError("自动播放被阻止，请手动点击播放按钮");
+            });
+          });
+          
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            // 过滤掉非致命错误，避免控制台报空对象错误
+            if (data.fatal) {
+              console.error("HLS致命错误:", data);
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  setError("网络错误，无法加载视频流");
+                  break;
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  setError("媒体错误，视频格式可能不支持");
+                  break;
+                default:
+                  setError("HLS播放错误，请检查链接有效性");
+                  break;
+              }
+              setIsLoading(false);
+            } else {
+              // 非致命错误，只记录不显示给用户
+              console.warn("HLS非致命错误:", data);
+            }
+          });
+          
+          // 加载视频源
+          hls.loadSource(m3u8Url);
+        } else {
+          setError("您的浏览器不支持HLS视频播放");
+          setIsLoading(false);
+          return;
+        }
+        
+        // 监听视频错误事件
+        videoRef.current.onerror = () => {
+          console.error("视频播放错误:", videoRef.current?.error);
+          const error = videoRef.current?.error;
+          let errorMessage = "视频播放失败";
+          
+          if (error) {
+            switch (error.code) {
+              case MediaError.MEDIA_ERR_ABORTED:
+                errorMessage = "视频加载被中止";
+                break;
+              case MediaError.MEDIA_ERR_NETWORK:
+                errorMessage = "网络错误，请检查网络连接";
+                break;
+              case MediaError.MEDIA_ERR_DECODE:
+                errorMessage = "视频解码错误，可能是编码格式不支持";
+                break;
+              case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                errorMessage = "视频格式不支持，请检查编码格式";
+                break;
+              default:
+                errorMessage = `播放错误: ${error.message || '未知错误'}`;
+            }
+          }
+          
+          setError(errorMessage);
+          setIsPlaying(false);
+          setIsLoading(false);
         };
+        
+        // 监听视频可以播放事件
+        videoRef.current.oncanplay = () => {
+          console.log("视频可以播放");
+          setError(null);
+          // 如果是原生HLS支持，在这里停止加载状态
+          if (videoRef.current?.canPlayType('application/vnd.apple.mpegurl')) {
+            setIsLoading(false);
+          }
+        };
+        
+        // 监听视频开始播放事件
+        videoRef.current.onplay = () => {
+          setIsPlaying(true);
+          setIsLoading(false); // 确保播放时停止加载状态
+        };
+        
+        // 设置超时检测
+        setTimeout(() => {
+          if (videoRef.current && videoRef.current.readyState < 2 && !isPlaying) {
+            console.warn("视频加载超时");
+            setError("视频加载超时，可能是网络问题或服务器响应慢");
+            setIsLoading(false);
+          }
+        }, 15000); // 15秒超时
       }
+      
+      // 异步分析M3U8文件（不影响播放）
+      setTimeout(async () => {
+        try {
+          await analyzeM3U8(m3u8Url);
+        } catch (err) {
+          console.warn("M3U8文件分析失败:", err);
+        }
+      }, 100);
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : "播放失败");
-      setCorsStatus("unknown");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -81,11 +231,33 @@ export default function M3U8Player() {
       videoRef.current.currentTime = 0;
       setIsPlaying(false);
     }
+    
+    // 清理HLS实例
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
   };
 
   const handleExampleClick = (url: string) => {
     setM3u8Url(url);
   };
+
+  // 检测浏览器视频格式支持
+  useEffect(() => {
+    const checkBrowserVideoSupport = () => {
+      const video = document.createElement('video');
+      const support = {
+        h264: video.canPlayType('video/mp4; codecs="avc1.42E01E"') !== '',
+        h265: video.canPlayType('video/mp4; codecs="hev1.1.6.L93.B0"') !== '',
+        vp9: video.canPlayType('video/webm; codecs="vp9"') !== '',
+        av1: video.canPlayType('video/mp4; codecs="av01.0.05M.08"') !== ''
+      };
+      setBrowserSupport(support);
+    };
+    
+    checkBrowserVideoSupport();
+  }, []);
 
   // 视频事件监听
   useEffect(() => {
@@ -115,86 +287,16 @@ export default function M3U8Player() {
       video.removeEventListener('pause', handlePauseEvent);
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      
+      // 清理HLS实例
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
     };
   }, []);
 
-  const checkCors = async (url: string) => {
-    try {
-      setCorsStatus("checking");
-      
-      // 尝试多种请求方法来检测跨域
-      const corsHeaders = {
-        'Access-Control-Request-Method': 'GET',
-        'Access-Control-Request-Headers': 'Content-Type'
-      };
-      
-      // 方法1: 尝试OPTIONS预检请求
-      try {
-        const optionsResponse = await fetch(url, {
-          method: 'OPTIONS',
-          mode: 'cors',
-          headers: corsHeaders
-        });
-        
-        if (optionsResponse.ok) {
-          const acao = optionsResponse.headers.get('Access-Control-Allow-Origin');
-          const acam = optionsResponse.headers.get('Access-Control-Allow-Methods');
-          
-          if (acao === '*' || acao === window.location.origin) {
-            setCorsStatus("allowed");
-            return;
-          }
-        }
-      } catch (optionsErr) {
-        // OPTIONS请求失败，继续尝试其他方法
-      }
-      
-      // 方法2: 尝试GET请求
-      try {
-        const getResponse = await fetch(url, {
-          method: 'GET',
-          mode: 'cors',
-          credentials: 'omit'
-        });
-        
-        if (getResponse.ok) {
-          const acao = getResponse.headers.get('Access-Control-Allow-Origin');
-          if (acao === '*' || acao === window.location.origin) {
-            setCorsStatus("allowed");
-            return;
-          }
-        }
-      } catch (getErr) {
-        // GET请求失败
-      }
-      
-      // 方法3: 尝试HEAD请求
-      try {
-        const headResponse = await fetch(url, {
-          method: 'HEAD',
-          mode: 'cors',
-          credentials: 'omit'
-        });
-        
-        if (headResponse.ok) {
-          const acao = headResponse.headers.get('Access-Control-Allow-Origin');
-          if (acao === '*' || acao === window.location.origin) {
-            setCorsStatus("allowed");
-            return;
-          }
-        }
-      } catch (headErr) {
-        // HEAD请求失败
-      }
-      
-      // 如果所有方法都失败，则判断为跨域被阻止
-      setCorsStatus("blocked");
-      
-    } catch (err) {
-      setCorsStatus("blocked");
-      throw new Error("跨域请求被阻止，视频可能无法正常播放");
-    }
-  };
+
 
   const analyzeM3U8 = async (url: string) => {
     try {
@@ -238,6 +340,8 @@ export default function M3U8Player() {
       const codecsMatch = text.match(/#EXT-X-STREAM-INF:.*CODECS="([^"]+)"/);
       const codecs = codecsMatch ? codecsMatch[1] : null;
       
+
+      
       setAnalysisResult({
         segmentCount,
         hasExtM3U,
@@ -258,29 +362,40 @@ export default function M3U8Player() {
     }
   };
 
-  const getCorsStatusText = () => {
-    switch (corsStatus) {
-      case "allowed": return "允许跨域";
-      case "blocked": return "跨域被阻止";
-      case "checking": return "检查中...";
-      default: return "未检查";
-    }
-  };
 
-  const getCorsStatusColor = () => {
-    switch (corsStatus) {
-      case "allowed": return "bg-green-100 text-green-800";
-      case "blocked": return "bg-red-100 text-red-800";
-      case "checking": return "bg-yellow-100 text-yellow-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
-  };
 
   // 格式化时间显示
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // 检查视频编解码器支持
+  const checkVideoCodecSupport = (codecs: string | null): { supported: boolean; message: string } => {
+    if (!codecs) return { supported: true, message: '未知编码格式' };
+    
+    // 检查H.264支持
+    if (codecs.includes('avc1')) {
+      return { supported: true, message: 'H.264编码 (广泛支持)' };
+    }
+    
+    // 检查H.265支持
+    if (codecs.includes('hev1') || codecs.includes('hvc1')) {
+      return { supported: false, message: 'H.265编码 (部分浏览器不支持)' };
+    }
+    
+    // 检查VP9支持
+    if (codecs.includes('vp09')) {
+      return { supported: true, message: 'VP9编码 (现代浏览器支持)' };
+    }
+    
+    // 检查AV1支持
+    if (codecs.includes('av01')) {
+      return { supported: true, message: 'AV1编码 (较新浏览器支持)' };
+    }
+    
+    return { supported: false, message: `不支持的编码格式: ${codecs}` };
   };
 
   // 重新分析M3U8文件
@@ -389,9 +504,6 @@ export default function M3U8Player() {
                 <CardTitle className="flex items-center justify-between">
                   <span>视频播放</span>
                   <div className="flex items-center gap-2">
-                    <Badge className={getCorsStatusColor()}>
-                      {getCorsStatusText()}
-                    </Badge>
                     {playbackInfo.duration > 0 && (
                       <Badge variant="outline">
                         {Math.floor(playbackInfo.currentTime)} / {Math.floor(playbackInfo.duration)}秒
@@ -411,25 +523,57 @@ export default function M3U8Player() {
                     ref={videoRef}
                     controls
                     className="w-full h-full"
-                    onError={() => setError("视频播放失败，请检查链接是否正确")}
                   >
                     您的浏览器不支持视频播放
                   </video>
+                  
+                  {/* 加载状态 */}
                   {isLoading && (
                     <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
                       <div className="text-white text-center">
                         <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
                         <div className="text-lg">加载中...</div>
-                        <div className="text-sm text-slate-300">正在检测跨域和分析文件结构</div>
+                        <div className="text-sm text-slate-300">正在分析文件结构</div>
                       </div>
                     </div>
                   )}
-                  {corsStatus === "blocked" && (
-                    <div className="absolute inset-0 bg-red-900 bg-opacity-70 flex items-center justify-center">
+                  
+
+                  
+                  {/* 视频播放失败状态 */}
+                  {error && !isLoading && (
+                    <div className="absolute inset-0 bg-orange-900 bg-opacity-70 flex items-center justify-center">
                       <div className="text-white text-center">
                         <AlertTriangle className="w-8 h-8 mx-auto mb-2" />
-                        <div className="text-lg">跨域被阻止</div>
-                        <div className="text-sm">视频服务器未设置CORS头</div>
+                        <div className="text-lg">播放失败</div>
+                        <div className="text-sm max-w-xs">{error}</div>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-3 text-white border-white hover:bg-white hover:text-orange-900"
+                          onClick={handlePlay}
+                        >
+                          重试播放
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* 视频就绪但未播放状态 */}
+                  {!isLoading && !error && !isPlaying && videoRef.current?.readyState >= 2 && (
+                    <div className="absolute inset-0 bg-blue-900 bg-opacity-80 flex items-center justify-center">
+                      <div className="text-white text-center">
+                        <Play className="w-8 h-8 mx-auto mb-2" />
+                        <div className="text-lg font-semibold">视频已加载</div>
+                        <div className="text-sm text-blue-100 mb-3">点击播放按钮开始播放</div>
+                        <Button 
+                          variant="default" 
+                          size="sm" 
+                          className="mt-3 bg-white text-blue-900 border-white hover:bg-blue-100 hover:text-blue-800 font-medium"
+                          onClick={() => videoRef.current?.play()}
+                        >
+                          开始播放
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -552,10 +696,54 @@ export default function M3U8Player() {
                               </Badge>
                             </div>
                           )}
+
+                          {analysisResult.codecs && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm">编码格式</span>
+                              <Badge variant="default" className={
+                                checkVideoCodecSupport(analysisResult.codecs).supported ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                              }>
+                                {checkVideoCodecSupport(analysisResult.codecs).message}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
                     
+                    {/* 浏览器支持信息 */}
+                    {browserSupport && (
+                      <div className="bg-orange-50 p-4 rounded-lg">
+                        <h4 className="font-semibold text-orange-800 mb-2">浏览器支持</h4>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">H.264 (AVC)</span>
+                            <Badge variant="default" className={browserSupport.h264 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                              {browserSupport.h264 ? '✓ 支持' : '✗ 不支持'}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">H.265 (HEVC)</span>
+                            <Badge variant="default" className={browserSupport.h265 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                              {browserSupport.h265 ? '✓ 支持' : '⚠ 部分支持'}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">VP9</span>
+                            <Badge variant="default" className={browserSupport.vp9 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                              {browserSupport.vp9 ? '✓ 支持' : '⚠ 部分支持'}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">AV1</span>
+                            <Badge variant="default" className={browserSupport.av1 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
+                              {browserSupport.av1 ? '✓ 支持' : '⚠ 部分支持'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* M3U8内容预览 */}
                     <div className="border-t pt-4">
                       <div className="flex items-center justify-between mb-2">
