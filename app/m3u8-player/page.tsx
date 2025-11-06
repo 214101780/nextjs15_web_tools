@@ -560,7 +560,7 @@ export default function M3U8Player() {
                   )}
                   
                   {/* 视频就绪但未播放状态 */}
-                  {!isLoading && !error && !isPlaying && videoRef.current?.readyState >= 2 && (
+                  {!isLoading && !error && !isPlaying && videoRef.current?.readyState && videoRef.current.readyState >= 2 && (
                     <div className="absolute inset-0 bg-blue-900 bg-opacity-80 flex items-center justify-center">
                       <div className="text-white text-center">
                         <Play className="w-8 h-8 mx-auto mb-2" />
